@@ -28,12 +28,12 @@ client = mqtt_client.Client(BASE_TOPIC)
 power = ['OFF', 'ON']
 
 devgroups = [
-    b'tasmota_test',
-    b'tasmota_test2'
+    'tasmota_test',
+    'tasmota_test2'
 ]
 
 zigbee2mqtt = {
-    b'tasmota_test': '0x001788010383edc0'
+    'tasmota_test': '0x001788010383edc0'
 }
 
 z2m_base_topic = 'zigbee2mqtt'
@@ -79,6 +79,22 @@ mqtt_connect()
 class DeviceGroup:
     def __init__(self):
         self.throttle = 0
+        self.cmds = {
+            'power': b'\x80',
+            'brightness': b'\x0a',
+            'color': b'\xe0'
+        }
+
+    def devgroup_discover(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        for group in devgroups:
+            group_name = f'TASMOTA_DGR{group}'
+            payload = f'{group_name}\x00\x01\x00\x03\x00'
+            try:
+                payload_bytes = payload.encode()
+            except Exception as e:
+                print(f'{e}')
+            sock.sendto(payload_bytes, (dg_addr, dg_port))
 
     def devgroup_listener(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -93,51 +109,67 @@ class DeviceGroup:
         self.throttle = 1
 
     def devgroup_converter(self):
+        cmd = self.cmds
         while True:
             data, src = self.sock.recvfrom(128)
+            print('data_received:', data, src)
             for group in devgroups:
-                if group in data:
+                if group.encode() in data:
                     print(data)
                     # print(data[data.find(b'\x00')+4:])
-                    if b'\xe0' in data:
+                 
+                    if cmd['color'] in data or (cmd['color'] in data and cmd['power'] in data):
                         if self.throttle:
                             self.throttle = 0
                         else:
-                            # tasmota color / color temp command
-                            info = data[data.find(b'\xe0'):]
-                            info = binascii.hexlify(info).decode()
-                            rgb = info[4:10]
-                            ct = info[10:14]
-                            cw = int(info[10:12], 16)
-                            ww = int(info[12:14], 16)
+                            color = data[data.find(cmd['color']):]
+                            color = binascii.hexlify(color).decode()
+                            rgb = color[4:10]
+                            cw = int(color[10:12], 16)
+                            ww = int(color[12:14], 16)
                             mired = int(327 - (173 * (cw / 255)) + (173 * (ww / 255)))
+                            pwr = data[data.find(cmd['power']):]
+                            print(f'pwr_only: {pwr}')
+                            pwr = binascii.hexlify(pwr).decode()
+                            pwr = int(pwr[2:4])
                             if rgb != '000000':
                                 payload = json.dumps({'color': {'hex': f'#{rgb}'}})
                             else:
                                 payload = json.dumps({'color_temp': mired})
-                            client.publish(f'zigbee2mqtt/{zigbee2mqtt[group]}/set', payload)
+                            if pwr:
+                                client.publish(f'zigbee2mqtt/{zigbee2mqtt[group]}/set', payload)
 
-                    if b'\x80' in data:
-                        # tasmota power command
-                        info = data[data.find(b'\x80'):]
-                        info = binascii.hexlify(info).decode()
-                        pwr = int(info[2:4])
-                        print(info)
-                        if pwr in [0, 1]:
+                    if cmd['brightness'] in data or (cmd['power'] in data and cmd['brightness'] in data):
+                        print(f'brt: {data}')
+                        brt = data[data.find(group.encode())+10:]
+                        brt = data[data.find(b'\x05'):]
+                        brt = binascii.hexlify(brt).decode()
+                        print(brt)
+                        brt = int(brt[2:4], 16)
+                        pwr = data[data.find(cmd['power']):]
+                        print(f'pwr: {info}')
+                        pwr = binascii.hexlify(pwr).decode()
+                        pwr = int(pwr[2:4])
+                        if pwr:
+                            client.publish(f'zigbee2mqtt/{zigbee2mqtt[group]}/set', json.dumps({'brightness': brt, 'power': power[pwr]}))
+                        elif not pwr:
                             client.publish(f'zigbee2mqtt/{zigbee2mqtt[group]}/set', json.dumps({'state': power[pwr]}))
 
-                    if b'\x0a' in data:
-                        # tasmota brightness command
-                        info = data[data.find(b'\x0a'):]
+                    elif cmd['power'] in data:
+                        info = data[data.find(cmd['power']):]
+                        print(f'pwr_only: {info}')
                         info = binascii.hexlify(info).decode()
-                        brt = int(info[2:4], 16)
-                        client.publish(f'zigbee2mqtt/{zigbee2mqtt[group]}/set', json.dumps({'brightness': brt}))
+                        pwr = int(info[2:4])
+                        if pwr in [0, 1]:
+                            client.publish(f'zigbee2mqtt/{zigbee2mqtt[group]}/set', json.dumps({'state': power[pwr]}))
 
 d = DeviceGroup()
 # test = d.device_group_intercept()
 
 dgl = t(target=d.devgroup_listener, daemon=True)
 dgl.start()
+sleep(3)
+d.devgroup_discover()
 dgc = t(target=d.devgroup_converter, daemon=True)
 dgc.start()
 client.loop_forever()
