@@ -1,0 +1,10 @@
+tasmota:
+  devgroups:
+    tasmota_test:
+    # list of zigbee2mqtt friendly names (can include Zigbee groups)
+    - '0x001788010383edc0'
+  devgroup_address: '239.255.250.250' # default
+  devgroup_port: 4447 # default
+
+zigbee2mqtt:
+  base_topic: 'zigbee2mqtt'
