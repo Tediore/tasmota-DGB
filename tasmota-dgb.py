@@ -15,17 +15,20 @@ import paho.mqtt.client as mqtt_client
 with open('config.yaml', 'r') as file:
     config = yaml.safe_load(file)
 
-MQTT_HOST = os.getenv('MQTT_HOST')
-MQTT_PORT = int(os.getenv('MQTT_PORT', 1883))
-MQTT_USER = os.getenv('MQTT_USER')
-MQTT_PASSWORD = os.getenv('MQTT_PASSWORD')
+mqtt_config = config['mqtt']
+tasmota_config = config['tasmota']
+
+MQTT_HOST = str(mqtt_config['host'])
+MQTT_PORT = int(mqtt_config['port'])
+MQTT_USER = str(mqtt_config['user'])
+MQTT_PASSWORD = str(mqtt_config['password'])
 MQTT_QOS = int(os.getenv('MQTT_QOS', 1))
-LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
+LOG_LEVEL = str(config['general']['log_level'].upper())
 
-dg_addr = str(config['tasmota']['devgroup_address'])
-dg_port = int(config['tasmota']['devgroup_port'])
+dg_addr = str(tasmota_config['devgroup_address'])
+dg_port = int(tasmota_config['devgroup_port'])
 
-config_dg = config['tasmota']['devgroups']
+config_dg = tasmota_config['devgroups']
 client = mqtt_client.Client('tasmota-DGB')
 devgroups = list(config_dg.keys())
 devgroups_z2m = dict(config_dg.items())
@@ -36,8 +39,8 @@ for k,v in devgroups_z2m.items():
     for v1 in v:
         z2m_devgroups[v1] = k
 
-print(devgroups_z2m)
-print(z2m_devgroups)
+logging.debug(devgroups_z2m)
+logging.debug(z2m_devgroups)
 
 def extract_topics(topic):
     for v in config_dg.values():
@@ -78,7 +81,7 @@ def on_connect(client, userdata, flags, rc):
 def on_message(client, userdata, msg):
     """Listen for MQTT payloads"""
     payload = json.loads(msg.payload.decode('utf-8'))
-    print(payload)
+    logging.debug(payload)
     topic = str(msg.topic.replace(f'{z2m_base_topic}/',"").replace('/set',""))
     if 'color' in payload:
         x = float(payload['color']['x'])
@@ -87,7 +90,7 @@ def on_message(client, userdata, msg):
         xyz_color = XYZColor(x, y, z, 10)
         rgb_color = convert_color(xyz_color, AdobeRGBColor)
         value = '#%02x%02x%02x' % (int(rgb_color.clamped_rgb_r * 255), int(rgb_color.clamped_rgb_g * 255), int(rgb_color.clamped_rgb_b * 255))
-        print(rgb_color)
+        logging.debug(rgb_color)
         d.devgroup_publisher(f'cmnd/{z2m_devgroups[topic]}/color', value, z2m_devgroups[topic])
 
     if 'color_temp' in payload:
@@ -134,7 +137,7 @@ class DeviceGroup:
             try:
                 payload_bytes = payload.encode()
             except Exception as e:
-                print(f'{e}')
+                logging.debug(f'{e}')
             sock.sendto(payload_bytes, (dg_addr, dg_port))
 
     def devgroup_listener(self):
@@ -154,12 +157,12 @@ class DeviceGroup:
         cmd = self.cmds
         while True:
             data, src = self.sock.recvfrom(128)
-            print('data_received:', data, src)
+            logging.debug('data_received:', data, src)
             devgroup = data[:data.find(b'\x00')].replace(b'TASMOTA_DGR',b'').decode('utf-8')
-            print(devgroup)
+            logging.debug(devgroup)
             for group in devgroups:
                 if group.encode() in data:
-                    print(data)
+                    logging.debug(data)
                     if cmd['color'] in data or (cmd['color'] in data and cmd['power'] in data):
                         color = data[data.find(cmd['color']):]
                         color = binascii.hexlify(color).decode()
@@ -168,9 +171,12 @@ class DeviceGroup:
                         ww = int(color[12:14], 16)
                         mired = int(327 - (173 * (cw / 255)) + (173 * (ww / 255)))
                         pwr = data[data.find(cmd['power']):]
-                        print(f'pwr_only: {pwr}')
+                        logging.debug(f'pwr_only: {pwr}')
                         pwr = binascii.hexlify(pwr).decode()
-                        pwr = int(pwr[2:4])
+                        try:
+                            pwr = int(pwr[2:4])
+                        except Exception as e:
+                            logging.error(e)
                         if pwr:
                             if rgb != '000000':
                                 self.payloads[group]['color'] = {'hex': f'#{rgb}'}
@@ -182,14 +188,14 @@ class DeviceGroup:
                         #         client.publish(f'zigbee2mqtt/{topic}/set', payload)
 
                     if cmd['brightness'] in data or (cmd['power'] in data and cmd['brightness'] in data):
-                        print(f'brt: {data}')
+                        logging.debug(f'brt: {data}')
                         brt = data[data.find(group.encode())+10:]
                         brt = data[data.find(b'\x05'):]
                         brt = binascii.hexlify(brt).decode()
-                        print(brt)
+                        logging.debug(brt)
                         brt = int(brt[2:4], 16)
                         pwr = data[data.find(cmd['power']):]
-                        print(f'pwr: {info}')
+                        logging.debug(f'pwr: {pwr}')
                         pwr = binascii.hexlify(pwr).decode()
                         pwr = int(pwr[2:4])
                         self.payloads[group]['state'] = power[pwr]
@@ -205,7 +211,7 @@ class DeviceGroup:
 
                     elif cmd['power'] in data:
                         info = data[data.find(cmd['power']):]
-                        print(f'pwr_only: {info}')
+                        logging.debug(f'pwr_only: {info}')
                         info = binascii.hexlify(info).decode()
                         pwr = int(info[2:4])
                         if pwr in [0, 1]:

@@ -1,17 +1,21 @@
 general:
-  log_level: debug
+  log_level: info
 
 mqtt:
   host: 10.0.0.2
   port: 1883
-  user: matt
-  password: 'ood7aeJ0Ea[poh(k'
+  user: deez
+  password: hunter2
 
 tasmota:
   devgroups:
-    tasmota_test:
+    dining_room:
     # list of zigbee2mqtt friendly names (can include Zigbee groups)
-    - '0x001788010383edc0'
+    - 'Dining room light'
+    - 'Dining room buffet light'
+    bedroom:
+    - 'Bedroom light'
+    - 'Ledroom bight'
   devgroup_address: '239.255.250.250' # default
   devgroup_port: 4447 # default
 
