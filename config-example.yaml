@@ -9,7 +9,7 @@ mqtt:
 
 tasmota:
   devgroups:
-    dining_room:
+    dining_room: # tasmota devgroupname. all devices in each device group must also have a grouptopic set to the same thing as the devgroupname. use grouptopic2, 3, or 4!
     # list of zigbee2mqtt friendly names (can include Zigbee groups)
     - 'Dining room light'
     - 'Dining room buffet light'
