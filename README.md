@@ -4,12 +4,12 @@ The code is also currently very messy. Sorry.
 
 See config-example.yaml for the required user config.
 
-#docker run
+docker run
 ```
 docker run --volume=/path/to/config.yaml:/config.yaml:ro --network=host --name=tasmota-dgb tediore/tasmota-dgb:alpha
 ```
 
-#docker compose
+docker compose
 ```yaml
 version: '3'
 services:
