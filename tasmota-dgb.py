@@ -84,14 +84,17 @@ def on_message(client, userdata, msg):
     logging.debug(payload)
     topic = str(msg.topic.replace(f'{z2m_base_topic}/',"").replace('/set',""))
     if 'color' in payload:
-        x = float(payload['color']['x'])
-        y = float(payload['color']['y'])
-        z = 1 - x - y
-        xyz_color = XYZColor(x, y, z, 10)
-        rgb_color = convert_color(xyz_color, AdobeRGBColor)
-        value = '#%02x%02x%02x' % (int(rgb_color.clamped_rgb_r * 255), int(rgb_color.clamped_rgb_g * 255), int(rgb_color.clamped_rgb_b * 255))
-        logging.debug(rgb_color)
-        d.devgroup_publisher(f'cmnd/{z2m_devgroups[topic]}/color', value, z2m_devgroups[topic])
+        try:
+            x = float(payload['color']['x'])
+            y = float(payload['color']['y'])
+            z = 1 - x - y
+            xyz_color = XYZColor(x, y, z, 10)
+            rgb_color = convert_color(xyz_color, AdobeRGBColor)
+            value = '#%02x%02x%02x' % (int(rgb_color.clamped_rgb_r * 255), int(rgb_color.clamped_rgb_g * 255), int(rgb_color.clamped_rgb_b * 255))
+            logging.debug(rgb_color)
+            d.devgroup_publisher(f'cmnd/{z2m_devgroups[topic]}/color', value, z2m_devgroups[topic])
+        except Exception as e:
+            logging.error({e})
 
     if 'color_temp' in payload:
         value = payload['color_temp']
